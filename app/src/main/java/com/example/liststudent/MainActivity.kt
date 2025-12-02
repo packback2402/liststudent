@@ -1,72 +1,101 @@
 package com.example.liststudent
 
+import android.app.Activity
+import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
-import android.widget.EditText
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.ListView
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var edtName: EditText
-    private lateinit var edtMssv: EditText
-    private lateinit var btnAdd: Button
-    private lateinit var btnUpdate: Button
     private lateinit var listView: ListView
-
     private val students = mutableListOf<Student>()
     private lateinit var adapter: StudentAdapter
 
-    private var selectedIndex = -1
+    private val studentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data
+            val student = data?.getSerializableExtra("result_student") as? Student
+            val isEdit = data?.getBooleanExtra("is_edit", false) ?: false
+
+            if (student != null) {
+                if (isEdit) {
+                    val index = students.indexOfFirst { it.mssv == student.mssv }
+                    if (index != -1) {
+                        students[index] = student
+                        adapter.notifyDataSetChanged()
+                        Toast.makeText(this, "Cập nhật thành công", Toast.LENGTH_SHORT).show()
+                    } else {
+                        // Trường hợp đặc biệt nếu MSSV bị đổi (dù đã khóa ở UI nhưng code vẫn nên xử lý)
+                        val originalMssv = data?.getStringExtra("original_mssv")
+                        val oldIndex = students.indexOfFirst { it.mssv == originalMssv }
+                        if (oldIndex != -1) {
+                            students[oldIndex] = student
+                            adapter.notifyDataSetChanged()
+                            Toast.makeText(this, "Cập nhật thành công", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                } else {
+                    if (students.any { it.mssv == student.mssv }) {
+                        Toast.makeText(this, "MSSV đã tồn tại", Toast.LENGTH_SHORT).show()
+                    } else {
+                        students.add(student)
+                        adapter.notifyDataSetChanged()
+                        Toast.makeText(this, "Thêm mới thành công", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        edtMssv = findViewById(R.id.edtMssv)
-        edtName = findViewById(R.id.edtName)
-        btnAdd = findViewById(R.id.btnAdd)
-        btnUpdate = findViewById(R.id.btnUpdate)
         listView = findViewById(R.id.listView)
 
+        // Dữ liệu mẫu
+        students.add(Student("20200001", "Nguyễn Văn A", "0901234567", "Hà Nội"))
+
         adapter = StudentAdapter(this, students, object : StudentAdapter.OnStudentClick {
-
             override fun onItemClick(position: Int) {
-                selectedIndex = position
-                val s = students[position]
-
-                edtName.setText(s.name)
-                edtMssv.setText(s.mssv)
+                val student = students[position]
+                val intent = Intent(this@MainActivity, DetailActivity::class.java)
+                intent.putExtra("student_data", student)
+                studentLauncher.launch(intent)
             }
 
             override fun onDelete(position: Int) {
                 students.removeAt(position)
                 adapter.notifyDataSetChanged()
+                Toast.makeText(this@MainActivity, "Đã xóa", Toast.LENGTH_SHORT).show()
             }
         })
 
         listView.adapter = adapter
+    }
 
-        btnAdd.setOnClickListener {
-            val name = edtName.text.toString()
-            val mssv = edtMssv.text.toString()
+    // Tạo Option Menu
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.menu_main, menu)
+        return true
+    }
 
-            if (name.isNotEmpty() && mssv.isNotEmpty()) {
-                students.add(Student(name, mssv))
-                adapter.notifyDataSetChanged()
-
-                edtName.setText("")
-                edtMssv.setText("")
+    // Xử lý sự kiện chọn Menu (Đã sửa lỗi cú pháp tại đây)
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_add -> {
+                val intent = Intent(this, DetailActivity::class.java)
+                studentLauncher.launch(intent)
+                true
             }
-        }
-
-        btnUpdate.setOnClickListener {
-            if (selectedIndex != -1) {
-                students[selectedIndex].name = edtName.text.toString()
-                students[selectedIndex].mssv = edtMssv.text.toString()
-
-                adapter.notifyDataSetChanged()
-            }
+            else -> super.onOptionsItemSelected(item)
         }
     }
 }
